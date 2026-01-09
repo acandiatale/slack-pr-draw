@@ -60,11 +60,13 @@ export class SlackController {
         }
 
         case '/pr-av': {
+          console.log('pr-av text:', text, 'raw:', JSON.stringify(text));
           const targetUserId = this.extractUserId(text);
+          console.log('extracted userId:', targetUserId);
           if (!targetUserId) {
             return res.json({
               response_type: 'ephemeral',
-              text: '사용법: /pr-av @사용자\n예: /pr-av @홍길동',
+              text: `사용법: /pr-av @사용자\n예: /pr-av @홍길동\n\n(debug: received "${text}")`,
             });
           }
 
