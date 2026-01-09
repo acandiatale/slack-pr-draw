@@ -144,6 +144,20 @@ export class SlackService {
 
       const success = await this.supabaseService.addVacation(targetUserId, channelId);
       if (success) {
+        // 채널에 메시지 전송
+        await this.slackClient.chat.postMessage({
+          channel: channelId,
+          text: `휴가자 등록: <@${targetUserId}>`,
+          blocks: [
+            {
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: `🏖️ 휴가자(<@${targetUserId}>) 등록 완료되었습니다.`,
+              },
+            },
+          ],
+        });
         return { success: true, message: `<@${targetUserId}>님의 휴가 등록이 완료되었습니다. 🏖️` };
       }
       return { success: false, message: '휴가 등록에 실패했습니다.' };
@@ -175,11 +189,46 @@ export class SlackService {
 
       const success = await this.supabaseService.removeVacation(targetUserId, channelId);
       if (success) {
+        // 채널에 메시지 전송
+        await this.slackClient.chat.postMessage({
+          channel: channelId,
+          text: `휴가자 해제: <@${targetUserId}>`,
+          blocks: [
+            {
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: `🎉 휴가자(<@${targetUserId}>) 등록 해제되었습니다.`,
+              },
+            },
+          ],
+        });
         return { success: true, message: `<@${targetUserId}>님의 휴가 해제가 완료되었습니다. 복귀를 환영합니다! 🎉` };
       }
       return { success: false, message: '휴가 해제에 실패했습니다.' };
     } catch (error) {
       console.error('Error removing vacation:', error);
+      return { success: false, message: '오류가 발생했습니다.' };
+    }
+  }
+
+  async getVacationList(
+    channelId: string,
+  ): Promise<{ success: boolean; message: string }> {
+    try {
+      const vacationUsers = await this.supabaseService.getVacationUsers(channelId);
+
+      if (vacationUsers.length === 0) {
+        return { success: true, message: '현재 등록된 휴가자가 없습니다.' };
+      }
+
+      const mentions = vacationUsers.map((id) => `<@${id}>`).join('\n');
+      return {
+        success: true,
+        message: `🏖️ *현재 휴가자 목록*\n${mentions}`,
+      };
+    } catch (error) {
+      console.error('Error getting vacation list:', error);
       return { success: false, message: '오류가 발생했습니다.' };
     }
   }

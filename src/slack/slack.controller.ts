@@ -91,6 +91,14 @@ export class SlackController {
           });
         }
 
+        case '/pr-vl': {
+          const result = await this.slackService.getVacationList(channel_id);
+          return res.json({
+            response_type: 'ephemeral',
+            text: result.message,
+          });
+        }
+
         default:
           return res.json({
             response_type: 'ephemeral',
