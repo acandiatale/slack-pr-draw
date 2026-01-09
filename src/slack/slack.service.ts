@@ -67,25 +67,59 @@ export class SlackService {
   }
 
   async addVacation(
-    userId: string,
+    targetUserId: string,
     channelId: string,
   ): Promise<{ success: boolean; message: string }> {
-    const success = await this.supabaseService.addVacation(userId, channelId);
-    if (success) {
-      return { success: true, message: '휴가 등록이 완료되었습니다. 🏖️' };
+    try {
+      // 채널 멤버 목록 가져오기
+      const result = await this.slackClient.conversations.members({
+        channel: channelId,
+      });
+
+      if (!result.members || !result.members.includes(targetUserId)) {
+        return { success: false, message: '리뷰어 이름을 확인해주세요. 채널에 존재하지 않는 사용자입니다.' };
+      }
+
+      const success = await this.supabaseService.addVacation(targetUserId, channelId);
+      if (success) {
+        return { success: true, message: `<@${targetUserId}>님의 휴가 등록이 완료되었습니다. 🏖️` };
+      }
+      return { success: false, message: '휴가 등록에 실패했습니다.' };
+    } catch (error) {
+      console.error('Error adding vacation:', error);
+      return { success: false, message: '오류가 발생했습니다.' };
     }
-    return { success: false, message: '휴가 등록에 실패했습니다.' };
   }
 
   async removeVacation(
-    userId: string,
+    targetUserId: string,
     channelId: string,
   ): Promise<{ success: boolean; message: string }> {
-    const success = await this.supabaseService.removeVacation(userId, channelId);
-    if (success) {
-      return { success: true, message: '휴가 해제가 완료되었습니다. 복귀를 환영합니다! 🎉' };
+    try {
+      // 채널 멤버 목록 가져오기
+      const result = await this.slackClient.conversations.members({
+        channel: channelId,
+      });
+
+      if (!result.members || !result.members.includes(targetUserId)) {
+        return { success: false, message: '리뷰어 이름을 확인해주세요. 채널에 존재하지 않는 사용자입니다.' };
+      }
+
+      // 휴가 등록 여부 확인
+      const vacationUsers = await this.supabaseService.getVacationUsers(channelId);
+      if (!vacationUsers.includes(targetUserId)) {
+        return { success: false, message: `<@${targetUserId}>님은 휴가중인 리뷰어가 아닙니다.` };
+      }
+
+      const success = await this.supabaseService.removeVacation(targetUserId, channelId);
+      if (success) {
+        return { success: true, message: `<@${targetUserId}>님의 휴가 해제가 완료되었습니다. 복귀를 환영합니다! 🎉` };
+      }
+      return { success: false, message: '휴가 해제에 실패했습니다.' };
+    } catch (error) {
+      console.error('Error removing vacation:', error);
+      return { success: false, message: '오류가 발생했습니다.' };
     }
-    return { success: false, message: '휴가 해제에 실패했습니다.' };
   }
 
   private shuffleArray<T>(array: T[]): T[] {

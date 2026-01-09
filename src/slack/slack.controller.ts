@@ -20,6 +20,12 @@ interface SlackCommandPayload {
 export class SlackController {
   constructor(private readonly slackService: SlackService) {}
 
+  // Slack 멘션에서 user_id 추출 (예: <@U12345678> 또는 <@U12345678|username>)
+  private extractUserId(text: string): string | null {
+    const match = text.match(/<@([A-Z0-9]+)(\|[^>]+)?>/);
+    return match ? match[1] : null;
+  }
+
   @Post('commands')
   async handleCommand(
     @Body() payload: SlackCommandPayload,
@@ -54,7 +60,15 @@ export class SlackController {
         }
 
         case '/pr-av': {
-          const result = await this.slackService.addVacation(user_id, channel_id);
+          const targetUserId = this.extractUserId(text);
+          if (!targetUserId) {
+            return res.json({
+              response_type: 'ephemeral',
+              text: '사용법: /pr-av @사용자\n예: /pr-av @홍길동',
+            });
+          }
+
+          const result = await this.slackService.addVacation(targetUserId, channel_id);
           return res.json({
             response_type: 'ephemeral',
             text: result.message,
@@ -62,7 +76,15 @@ export class SlackController {
         }
 
         case '/pr-rv': {
-          const result = await this.slackService.removeVacation(user_id, channel_id);
+          const targetUserId = this.extractUserId(text);
+          if (!targetUserId) {
+            return res.json({
+              response_type: 'ephemeral',
+              text: '사용법: /pr-rv @사용자\n예: /pr-rv @홍길동',
+            });
+          }
+
+          const result = await this.slackService.removeVacation(targetUserId, channel_id);
           return res.json({
             response_type: 'ephemeral',
             text: result.message,
