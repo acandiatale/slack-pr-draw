@@ -73,19 +73,16 @@ export class SlackController {
             });
           }
 
-          // 즉시 응답 후 비동기 처리
-          res.status(200).json({
-            response_type: 'ephemeral',
-            text: '🎲 리뷰어 추첨 중...',
-          });
-
+          // 작업 완료 후 응답
           const result = await this.slackService.drawReviewers(
             channel_id,
             user_id,
             count,
           );
-          await this.sendDelayedResponse(response_url, result.message);
-          return;
+          return res.status(200).json({
+            response_type: 'ephemeral',
+            text: result.message,
+          });
         }
 
         case '/pr-av': {
@@ -97,15 +94,11 @@ export class SlackController {
             });
           }
 
-          // 즉시 응답 후 비동기 처리
-          res.status(200).json({
-            response_type: 'ephemeral',
-            text: '🏖️ 휴가 등록 처리 중...',
-          });
-
           const result = await this.slackService.addVacation(userIdentifier, channel_id);
-          await this.sendDelayedResponse(response_url, result.message);
-          return;
+          return res.status(200).json({
+            response_type: 'ephemeral',
+            text: result.message,
+          });
         }
 
         case '/pr-rv': {
@@ -117,27 +110,19 @@ export class SlackController {
             });
           }
 
-          // 즉시 응답 후 비동기 처리
-          res.status(200).json({
-            response_type: 'ephemeral',
-            text: '🎉 휴가 해제 처리 중...',
-          });
-
           const result = await this.slackService.removeVacation(userIdentifier, channel_id);
-          await this.sendDelayedResponse(response_url, result.message);
-          return;
+          return res.status(200).json({
+            response_type: 'ephemeral',
+            text: result.message,
+          });
         }
 
         case '/pr-vl': {
-          // 즉시 응답 후 비동기 처리
-          res.status(200).json({
-            response_type: 'ephemeral',
-            text: '📋 휴가자 목록 조회 중...',
-          });
-
           const result = await this.slackService.getVacationList(channel_id);
-          await this.sendDelayedResponse(response_url, result.message);
-          return;
+          return res.status(200).json({
+            response_type: 'ephemeral',
+            text: result.message,
+          });
         }
 
         default:
@@ -148,13 +133,10 @@ export class SlackController {
       }
     } catch (error) {
       console.error('Command error:', error);
-      if (!res.headersSent) {
-        return res.status(200).json({
-          response_type: 'ephemeral',
-          text: '오류가 발생했습니다. 잠시 후 다시 시도해주세요.',
-        });
-      }
-      await this.sendDelayedResponse(response_url, '오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
+      return res.status(200).json({
+        response_type: 'ephemeral',
+        text: '오류가 발생했습니다. 잠시 후 다시 시도해주세요.',
+      });
     }
   }
 }

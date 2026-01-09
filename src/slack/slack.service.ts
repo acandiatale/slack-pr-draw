@@ -20,7 +20,7 @@ export class SlackService {
     }
   }
 
-  // username 또는 display_name으로 user_id 찾기
+  // username 또는 display_name으로 user_id 찾기 (최적화)
   private async findUserByName(
     name: string,
     channelId: string,
@@ -44,16 +44,19 @@ export class SlackService {
 
       if (!members.members) return null;
 
-      // 각 멤버의 정보를 가져와서 이름 매칭
-      for (const memberId of members.members) {
-        const userInfo = await this.slackClient.users.info({ user: memberId });
-        const user = userInfo.user;
-        if (!user) continue;
+      // 전체 사용자 목록 한 번에 가져오기
+      const usersList = await this.slackClient.users.list({});
+      if (!usersList.members) return null;
+
+      const searchName = name.toLowerCase();
+
+      // 채널 멤버 중에서 이름 매칭
+      for (const user of usersList.members) {
+        if (!user.id || !members.members.includes(user.id)) continue;
 
         const displayName = user.profile?.display_name?.toLowerCase() || '';
         const realName = user.real_name?.toLowerCase() || '';
         const userName = user.name?.toLowerCase() || '';
-        const searchName = name.toLowerCase();
 
         if (
           displayName === searchName ||
@@ -61,7 +64,7 @@ export class SlackService {
           userName === searchName
         ) {
           return {
-            id: memberId,
+            id: user.id,
             displayName: user.profile?.display_name || user.real_name || userName,
           };
         }
