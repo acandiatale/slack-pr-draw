@@ -20,10 +20,22 @@ interface SlackCommandPayload {
 export class SlackController {
   constructor(private readonly slackService: SlackService) {}
 
-  // Slack 멘션에서 user_id 추출 (예: <@U12345678> 또는 <@U12345678|username>)
-  private extractUserId(text: string): string | null {
-    const match = text.match(/<@([A-Z0-9]+)(\|[^>]+)?>/);
-    return match ? match[1] : null;
+  // Slack 멘션에서 user_id 또는 username 추출
+  // 형태: <@U12345678>, <@U12345678|username>, @username, username
+  private extractUserIdentifier(text: string): string | null {
+    // <@U12345678> 또는 <@U12345678|username> 형태
+    const idMatch = text.match(/<@([A-Z0-9]+)(\|[^>]+)?>/);
+    if (idMatch) return idMatch[1];
+
+    // @username 형태
+    const usernameMatch = text.match(/@(\S+)/);
+    if (usernameMatch) return usernameMatch[1];
+
+    // 그냥 username만 입력한 경우
+    const trimmed = text.trim();
+    if (trimmed) return trimmed;
+
+    return null;
   }
 
   @Post('commands')
@@ -60,17 +72,15 @@ export class SlackController {
         }
 
         case '/pr-av': {
-          console.log('pr-av text:', text, 'raw:', JSON.stringify(text));
-          const targetUserId = this.extractUserId(text);
-          console.log('extracted userId:', targetUserId);
-          if (!targetUserId) {
+          const userIdentifier = this.extractUserIdentifier(text);
+          if (!userIdentifier) {
             return res.json({
               response_type: 'ephemeral',
-              text: `사용법: /pr-av @사용자\n예: /pr-av @홍길동\n\n(debug: received "${text}")`,
+              text: '사용법: /pr-av @사용자\n예: /pr-av @홍길동',
             });
           }
 
-          const result = await this.slackService.addVacation(targetUserId, channel_id);
+          const result = await this.slackService.addVacation(userIdentifier, channel_id);
           return res.json({
             response_type: 'ephemeral',
             text: result.message,
@@ -78,15 +88,15 @@ export class SlackController {
         }
 
         case '/pr-rv': {
-          const targetUserId = this.extractUserId(text);
-          if (!targetUserId) {
+          const userIdentifier = this.extractUserIdentifier(text);
+          if (!userIdentifier) {
             return res.json({
               response_type: 'ephemeral',
               text: '사용법: /pr-rv @사용자\n예: /pr-rv @홍길동',
             });
           }
 
-          const result = await this.slackService.removeVacation(targetUserId, channel_id);
+          const result = await this.slackService.removeVacation(userIdentifier, channel_id);
           return res.json({
             response_type: 'ephemeral',
             text: result.message,

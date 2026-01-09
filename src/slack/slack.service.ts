@@ -20,6 +20,60 @@ export class SlackService {
     }
   }
 
+  // username 또는 display_name으로 user_id 찾기
+  private async findUserByName(
+    name: string,
+    channelId: string,
+  ): Promise<{ id: string; displayName: string } | null> {
+    try {
+      // 이미 user_id 형태인 경우 (U로 시작하는 대문자+숫자)
+      if (/^U[A-Z0-9]+$/.test(name)) {
+        const userInfo = await this.slackClient.users.info({ user: name });
+        if (userInfo.user) {
+          return {
+            id: name,
+            displayName: userInfo.user.profile?.display_name || userInfo.user.real_name || name,
+          };
+        }
+      }
+
+      // 채널 멤버 목록 가져오기
+      const members = await this.slackClient.conversations.members({
+        channel: channelId,
+      });
+
+      if (!members.members) return null;
+
+      // 각 멤버의 정보를 가져와서 이름 매칭
+      for (const memberId of members.members) {
+        const userInfo = await this.slackClient.users.info({ user: memberId });
+        const user = userInfo.user;
+        if (!user) continue;
+
+        const displayName = user.profile?.display_name?.toLowerCase() || '';
+        const realName = user.real_name?.toLowerCase() || '';
+        const userName = user.name?.toLowerCase() || '';
+        const searchName = name.toLowerCase();
+
+        if (
+          displayName === searchName ||
+          realName === searchName ||
+          userName === searchName
+        ) {
+          return {
+            id: memberId,
+            displayName: user.profile?.display_name || user.real_name || userName,
+          };
+        }
+      }
+
+      return null;
+    } catch (error) {
+      console.error('Error finding user by name:', error);
+      return null;
+    }
+  }
+
   // 봇이 아닌 실제 사용자만 필터링
   private async filterOutBots(memberIds: string[]): Promise<string[]> {
     const results = await Promise.all(
@@ -129,36 +183,33 @@ export class SlackService {
   }
 
   async addVacation(
-    targetUserId: string,
+    userIdentifier: string,
     channelId: string,
   ): Promise<{ success: boolean; message: string }> {
     try {
-      // 채널 멤버 목록 가져오기
-      const result = await this.slackClient.conversations.members({
-        channel: channelId,
-      });
-
-      if (!result.members || !result.members.includes(targetUserId)) {
+      // 사용자 찾기 (이름 또는 ID로)
+      const user = await this.findUserByName(userIdentifier, channelId);
+      if (!user) {
         return { success: false, message: '리뷰어 이름을 확인해주세요. 채널에 존재하지 않는 사용자입니다.' };
       }
 
-      const success = await this.supabaseService.addVacation(targetUserId, channelId);
+      const success = await this.supabaseService.addVacation(user.id, channelId);
       if (success) {
         // 채널에 메시지 전송
         await this.slackClient.chat.postMessage({
           channel: channelId,
-          text: `휴가자 등록: <@${targetUserId}>`,
+          text: `휴가자 등록: <@${user.id}>`,
           blocks: [
             {
               type: 'section',
               text: {
                 type: 'mrkdwn',
-                text: `🏖️ 휴가자(<@${targetUserId}>) 등록 완료되었습니다.`,
+                text: `🏖️ 휴가자(<@${user.id}>) 등록 완료되었습니다.`,
               },
             },
           ],
         });
-        return { success: true, message: `<@${targetUserId}>님의 휴가 등록이 완료되었습니다. 🏖️` };
+        return { success: true, message: `<@${user.id}>님의 휴가 등록이 완료되었습니다. 🏖️` };
       }
       return { success: false, message: '휴가 등록에 실패했습니다.' };
     } catch (error) {
@@ -168,42 +219,39 @@ export class SlackService {
   }
 
   async removeVacation(
-    targetUserId: string,
+    userIdentifier: string,
     channelId: string,
   ): Promise<{ success: boolean; message: string }> {
     try {
-      // 채널 멤버 목록 가져오기
-      const result = await this.slackClient.conversations.members({
-        channel: channelId,
-      });
-
-      if (!result.members || !result.members.includes(targetUserId)) {
+      // 사용자 찾기 (이름 또는 ID로)
+      const user = await this.findUserByName(userIdentifier, channelId);
+      if (!user) {
         return { success: false, message: '리뷰어 이름을 확인해주세요. 채널에 존재하지 않는 사용자입니다.' };
       }
 
       // 휴가 등록 여부 확인
       const vacationUsers = await this.supabaseService.getVacationUsers(channelId);
-      if (!vacationUsers.includes(targetUserId)) {
-        return { success: false, message: `<@${targetUserId}>님은 휴가중인 리뷰어가 아닙니다.` };
+      if (!vacationUsers.includes(user.id)) {
+        return { success: false, message: `<@${user.id}>님은 휴가중인 리뷰어가 아닙니다.` };
       }
 
-      const success = await this.supabaseService.removeVacation(targetUserId, channelId);
+      const success = await this.supabaseService.removeVacation(user.id, channelId);
       if (success) {
         // 채널에 메시지 전송
         await this.slackClient.chat.postMessage({
           channel: channelId,
-          text: `휴가자 해제: <@${targetUserId}>`,
+          text: `휴가자 해제: <@${user.id}>`,
           blocks: [
             {
               type: 'section',
               text: {
                 type: 'mrkdwn',
-                text: `🎉 휴가자(<@${targetUserId}>) 등록 해제되었습니다.`,
+                text: `🎉 휴가자(<@${user.id}>) 등록 해제되었습니다.`,
               },
             },
           ],
         });
-        return { success: true, message: `<@${targetUserId}>님의 휴가 해제가 완료되었습니다. 복귀를 환영합니다! 🎉` };
+        return { success: true, message: `<@${user.id}>님의 휴가 해제가 완료되었습니다. 복귀를 환영합니다! 🎉` };
       }
       return { success: false, message: '휴가 해제에 실패했습니다.' };
     } catch (error) {
