@@ -10,6 +10,27 @@ export class SlackService {
     this.slackClient = new WebClient(process.env.SLACK_BOT_TOKEN);
   }
 
+  // 사용자가 봇인지 확인
+  private async isBot(userId: string): Promise<boolean> {
+    try {
+      const result = await this.slackClient.users.info({ user: userId });
+      return result.user?.is_bot === true;
+    } catch {
+      return false;
+    }
+  }
+
+  // 봇이 아닌 실제 사용자만 필터링
+  private async filterOutBots(memberIds: string[]): Promise<string[]> {
+    const results = await Promise.all(
+      memberIds.map(async (id) => ({
+        id,
+        isBot: await this.isBot(id),
+      })),
+    );
+    return results.filter((r) => !r.isBot).map((r) => r.id);
+  }
+
   async drawReviewers(
     channelId: string,
     requesterId: string,
@@ -28,13 +49,15 @@ export class SlackService {
       // 휴가자 목록 가져오기
       const vacationUsers = await this.supabaseService.getVacationUsers(channelId);
 
-      // 본인과 휴가자, 봇 제외
-      const eligibleMembers = result.members.filter(
+      // 본인과 휴가자 제외
+      const candidateMembers = result.members.filter(
         (memberId) =>
           memberId !== requesterId &&
-          !vacationUsers.includes(memberId) &&
-          !memberId.startsWith('B'), // 봇 ID는 보통 B로 시작
+          !vacationUsers.includes(memberId),
       );
+
+      // 봇 제외
+      const eligibleMembers = await this.filterOutBots(candidateMembers);
 
       if (eligibleMembers.length === 0) {
         return { success: false, message: '선택 가능한 멤버가 없습니다.' };
@@ -53,10 +76,49 @@ export class SlackService {
       // 멘션 문자열 생성
       const mentions = selectedMembers.map((id) => `<@${id}>`).join(' ');
 
-      // 메시지 전송
+      // 메시지 전송 (Block Kit 사용)
       await this.slackClient.chat.postMessage({
         channel: channelId,
-        text: `🎲 PR 리뷰어가 선정되었습니다!\n${mentions}\n\n<@${requesterId}>님의 PR 리뷰를 부탁드립니다! 🙏`,
+        text: `PR 리뷰어: ${mentions}`,
+        blocks: [
+          {
+            type: 'header',
+            text: {
+              type: 'plain_text',
+              text: '🎲 PR 리뷰어 추첨 결과',
+              emoji: true,
+            },
+          },
+          {
+            type: 'divider',
+          },
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `*선정된 리뷰어*\n${mentions}`,
+            },
+          },
+          {
+            type: 'context',
+            elements: [
+              {
+                type: 'mrkdwn',
+                text: `📝 요청자: <@${requesterId}>`,
+              },
+            ],
+          },
+          {
+            type: 'divider',
+          },
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: '리뷰 부탁드립니다! 🙏',
+            },
+          },
+        ],
       });
 
       return { success: true, message: '리뷰어가 선정되었습니다!' };
